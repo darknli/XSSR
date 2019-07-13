@@ -16,14 +16,14 @@ class GAN:
 
         # Build and compile the discriminator
         self.discriminator = self.build_discriminator()
-        self.discriminator.summary()
+        # self.discriminator.summary()
         self.discriminator.compile(loss='binary_crossentropy',
                                    optimizer=optimizer,
                                    metrics=['accuracy'])
 
         # Build the generator
         self.generator = self.build_generator()
-        self.generator.summary()
+        # self.generator.summary()
         # The generator takes noise as input and generates imgs
         z = Input(shape=(self.latent_dim,))
         img = self.generator(z)
@@ -36,7 +36,7 @@ class GAN:
         # The combined model  (stacked generator and discriminator)
         # Trains the generator to fool the discriminator
         self.combined = Model(z, validity)
-        self.combined.summary()
+        # self.combined.summary()
         self.combined.compile(loss='binary_crossentropy', optimizer=optimizer)
 
     def build_generator(self):

@@ -8,140 +8,96 @@ import os
 from PIL import Image
 import random
 import numpy as np
-
+from tensorflow.python.keras.utils import to_categorical
 
 transpose = [Image.FLIP_LEFT_RIGHT, Image.FLIP_TOP_BOTTOM,
              Image.ROTATE_90, Image.ROTATE_180, Image.ROTATE_270]
 
-class DataGenerator(keras.utils.Sequence):
-    def __init__(self, directory, classes, batch_size=1, img_shape=(299, 299), is_training=True):
+class dataGenertor(keras.utils.Sequence):
+    def __init__(self, directory, label, batch_size=1, crop_w=162, crop_h=279):
         self.batch_size = batch_size
-        self.get_labels(classes)
-        self.get_filenames(directory)
-        self.img_shape = img_shape
+        self.filenames = self.get_filenames(directory)
         self.length = len(self.filenames)
-        self.num_classes = len(self.label2idx)
-        self.is_training = is_training
-
-    def get_labels(self, classes):
-        self.label2idx = {}
-        for i, label in enumerate(classes):
-            self.label2idx[label] = i
+        self.label = label
+        self.crop_w = crop_w
+        self.crop_h = crop_h
 
     def get_filenames(self, directory):
         self.filenames = []
         self.filelabels = []
-        classes = glob.glob(os.path.join(directory, '*'))
-        for label_dir in classes:
-            label = os.path.split(label_dir)[-1]
-            idx = self.label2idx[label]
-            files = glob.glob(os.path.join(label_dir, '*'))
-            self.filenames += files
-            self.filelabels += [idx] * len(files)
-            print('%s has %d examples' % (label, len(files)))
+        files = glob.glob(os.path.join(directory, '*'))
+        print('%s has %d examples' % (directory, len(files)))
+        return files
+    def __len__(self):
+        #计算每一个epoch的迭代次数
+        return math.ceil(self.length / float(self.batch_size))
+
+    def __getitem__(self, index):
+        try:
+            data = [self.process_image(self.filenames[index+batch]) for batch in range(self.batch_size)]
+        except IOError:
+            print([self.filenames[index+batch] for batch in range(self.batch_size)])
+            raise IOError('ERROR!!!!!!!!!!!')
+        label = self.label*np.ones((self.batch_size, 1))
+        return np.array(data), label
+
+    def process_image(self, image):
+        """Given an image, process it and return the array."""
+        img = Image.open(image).convert("RGB")
+        img = np.array(img)
+        img = random_crop(img, self.crop_w, self.crop_h)
+        img = img.astype(np.float32)/127.5 - 1
+        return img
+
+
+class dataDiscriminator(keras.utils.Sequence):
+    def __init__(self, lr_dir, hr_dir, batch_size=16, expansion=4, crop_w=162, crop_h=279):
+        self.batch_size = batch_size
+        self.lr_filename, self.hr_filename = self.get_filenames(lr_dir, hr_dir)
+        self.length = len(self.lr_filename)
+        self.crop_w = crop_w
+        self.crop_h = crop_h
+        self.expansion = expansion
+
+    def get_filenames(self, lr_dir, hr_dir):
+        lr_filename = glob.glob(os.path.join(lr_dir, '*'))
+        hr_filename = glob.glob(os.path.join(hr_dir, '*'))
+        if len(lr_filename) != len(hr_filename):
+            raise ValueError('高清数据数量%d与低清数据数量%d不相等' % (len(hr_filename), len(lr_filename)))
+        return lr_filename, hr_filename
 
     def __len__(self):
         #计算每一个epoch的迭代次数
         return math.ceil(self.length / float(self.batch_size))
 
     def __getitem__(self, index):
-        # print('get batch size data')
-        batch = 0
-        data = []
-        labels = []
-        while batch < self.batch_size:
-            try:
-                number = random.randint(0, self.length-1)
-                img = self.process_image(self.filenames[number], self.img_shape)
-                data.append(img)
-                label = np.zeros((self.num_classes))
-                label[self.filelabels[number]] = 1
-                labels.append(label)
-                batch += 1
-            except OSError:
-                continue
-        return np.array(data), np.array(labels)
+        lr_imgs = []
+        hr_imgs = []
+        try:
+            for batch in range(self.batch_size):
+                number = index+batch
+                lr_img = self.process_image(self.lr_filename[number])
+                lr_imgs.append(lr_img)
+                hr_img = self.process_image(self.hr_filename[number], expansion=4)
+                hr_imgs.append(hr_img)
+        except IOError:
+            print(self.lr_filename[number], self.hr_filename[number])
+            raise IOError('ERROR!!!!!!!!!!!')
+        labels = np.tile(np.array([[0, 1]]), (self.batch_size, 1))
+        return [np.array(lr_imgs), np.array(hr_imgs)], [np.zeros((self.batch_size, 1)), np.ones((self.batch_size, 1))]
 
-    def process_image(self, image, target_shape):
+    def process_image(self, image, expansion=1):
         """Given an image, process it and return the array."""
         img = Image.open(image).convert("RGB")
-        # if self.is_training:
-        #     trans_number = random.randint(0, 6)
-        #     if trans_number < 5:
-        #         img = img.transpose(transpose[trans_number])
-        #     img = np.array(img)
-        #     # img = get_square_shape(img)
-        #     # img = random_hsv_transform(img, 2, 0.5, 0.5)
-        #     # img = random_rotate(img, 180, 0.8)
-        #     # img = cv2.resize(img, target_shape)
-        # else:
         img = np.array(img)
-        img = img.astype(np.float32)/127 - 1
+        img = random_crop(img, expansion*self.crop_w, expansion*self.crop_h)
+        img = img.astype(np.float32)/127.5 - 1
         return img
 
 
-class DataDiscriminator(keras.utils.Sequence):
-    def __init__(self, directory, classes, batch_size=1, img_shape=(299, 299), is_training=True):
-        self.batch_size = batch_size
-        self.get_labels(classes)
-        self.get_filenames(directory)
-        self.img_shape = img_shape
-        self.length = len(self.filenames)
-        self.num_classes = len(self.label2idx)
-        self.is_training = is_training
-
-    def get_labels(self, classes):
-        self.label2idx = {}
-        for i, label in enumerate(classes):
-            self.label2idx[label] = i
-
-    def get_filenames(self, directory):
-        self.filenames = []
-        self.filelabels = []
-        classes = glob.glob(os.path.join(directory, '*'))
-        for label_dir in classes:
-            label = os.path.split(label_dir)[-1]
-            idx = self.label2idx[label]
-            files = glob.glob(os.path.join(label_dir, '*'))
-            self.filenames += files
-            self.filelabels += [idx] * len(files)
-            print('%s has %d examples' % (label, len(files)))
-
-    def __len__(self):
-        #计算每一个epoch的迭代次数
-        return math.ceil(self.length / float(self.batch_size))
-
-    def __getitem__(self, index):
-        # print('get batch size data')
-        batch = 0
-        data = []
-        labels = []
-        while batch < self.batch_size:
-            try:
-                number = random.randint(0, self.length-1)
-                img = self.process_image(self.filenames[number], self.img_shape)
-                data.append(img)
-                label = np.zeros((self.num_classes))
-                label[self.filelabels[number]] = 1
-                labels.append(label)
-                batch += 1
-            except OSError:
-                continue
-        return np.array(data), np.array(labels)
-
-    def process_image(self, image, target_shape):
-        """Given an image, process it and return the array."""
-        img = Image.open(image).convert("RGB")
-        # if self.is_training:
-        #     trans_number = random.randint(0, 6)
-        #     if trans_number < 5:
-        #         img = img.transpose(transpose[trans_number])
-        #     img = np.array(img)
-        #     # img = get_square_shape(img)
-        #     # img = random_hsv_transform(img, 2, 0.5, 0.5)
-        #     # img = random_rotate(img, 180, 0.8)
-        #     # img = cv2.resize(img, target_shape)
-        # else:
-        img = np.array(img)
-        img = img.astype(np.float32)/127 - 1
-        return img
+def random_crop(img, crop_w=162, crop_h=279):
+    w, h, c = img.shape
+    shift_w = random.randint(0, w - crop_w)
+    shift_h = random.randint(0, h -crop_h)
+    img = img[shift_w:shift_w+crop_w, shift_h:shift_h+crop_h, :]
+    return img
