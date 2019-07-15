@@ -25,8 +25,8 @@ if __name__ == '__main__':
                                 batch_size=d_batch_size
                                 )
     model = GAN(3, 32)
-
+    model.load_weight('gan_g', r'E:\Learn\XSSR\ESR\checkpoints\2019-07-14\0.000-1.000-ESRGAN.h5')
     for _ in range(epochs):
-        model.train_discriminator(step_epoch, train_d)
+        model.train_discriminator(step_epoch+20, train_d)
         model.train_generator(step_epoch, train_g, val_g)
 

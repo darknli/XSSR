@@ -182,7 +182,7 @@ class GAN:
         self.gan_g.layers[1].trainable = True
         self.gan_g.summary()
         self.gan_g.compile(optimizer=SGD(1e-2, 0.9), loss='binary_crossentropy', metrics=['accuracy'])
-        return self.gan_g.fit_generator(
+        self.gan_g.fit_generator(
             generator=train,
             steps_per_epoch=len(train),
             validation_data=val,
@@ -225,8 +225,14 @@ class GAN:
             generator=train,
             steps_per_epoch=len(train),
             epochs=epochs,
-            # workers=8,
-            # use_multiprocessing=True,
-            # max_queue_size=100,
+            workers=8,
+            use_multiprocessing=True,
+            max_queue_size=100,
         )
-        self.discriminator.save_weights(self.name, '/discriminator.h5')
+        self.discriminator.model.save_weights(self.name+'/discriminator.h5')
+
+    def load_weight(self, model_type, model_weights):
+        if model_type not in ['gan_g', 'discriminator']:
+            raise ValueError('model_type must be in [generator, discriminator]!!!')
+        print('加载%s模型文件%s'%(model_type, model_weights))
+        eval("self."+model_type).load_weights(model_weights)
