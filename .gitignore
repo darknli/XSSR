@@ -3,5 +3,6 @@ test/imgs
 test/__pycache__/
 ESR/checkpoints
 ESR/__pycache__/
+ESR_batch/__pycache__
 ESR_batch/checkpoints
 ESR_batch/sr
